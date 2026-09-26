@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/app/lib/supabase/client";
+import { isSingleUserMode } from "@/app/lib/auth-mode";
 import { AiQueryBar } from "@/app/components/ai-query-bar";
 import { MeetingFeed } from "@/app/components/meeting-feed";
 import { UploadModal } from "@/app/components/upload-modal";
@@ -25,14 +26,16 @@ export default function HomePage() {
     const [isYoutubeDialogOpen, setYoutubeDialogOpen] = useState(false);
 
     useEffect(() => {
-        const supabase = createClient();
-        supabase.auth.getUser().then(({ data }) => {
-            if (data.user) {
-                const full = data.user.user_metadata?.full_name as string | undefined;
-                const name = full?.split(" ")[0] ?? data.user.email?.split("@")[0] ?? "there";
-                setFirstName(name);
-            }
-        });
+        if (!isSingleUserMode) {
+            const supabase = createClient();
+            supabase.auth.getUser().then(({ data }) => {
+                if (data.user) {
+                    const full = data.user.user_metadata?.full_name as string | undefined;
+                    const name = full?.split(" ")[0] ?? data.user.email?.split("@")[0] ?? "there";
+                    setFirstName(name);
+                }
+            });
+        }
 
         const handleOpenModal = () => setUploadModalOpen(true);
         window.addEventListener('open-upload-modal', handleOpenModal);

@@ -7,7 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
 import threading
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # ── JWKS cache ────────────────────────────────────────────────────────────────
 # Cache the JWKS keys from Supabase to avoid fetching on every request.
@@ -52,7 +52,7 @@ def _clear_jwks_cache() -> None:
 
 
 def verify_supabase_jwt(
-    credentials: HTTPAuthorizationCredentials = Security(security),
+    credentials: HTTPAuthorizationCredentials | None = Security(security),
 ) -> dict:
     """
     Verify a Supabase-issued JWT.
@@ -60,7 +60,24 @@ def verify_supabase_jwt(
     Supports both:
     - New asymmetric keys (RS256 / ES256) via JWKS endpoint
     - Legacy symmetric secret (HS256) as a fallback
+
+    When SINGLE_USER_MODE is enabled, skips verification entirely and returns a
+    fixed local identity (JIT provisioning in deps.get_current_user creates the row).
     """
+    if settings.SINGLE_USER_MODE:
+        return {
+            "sub": "single-user-local",
+            "email": "local@zabt.local",
+            "user_metadata": {"full_name": "Local User"},
+        }
+
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     token = credentials.credentials
 
     # ── Try JWKS-based asymmetric verification first ──────────────────────────

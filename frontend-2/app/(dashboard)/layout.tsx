@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { createClient } from "@/app/lib/supabase/client";
+import { isSingleUserMode } from "@/app/lib/auth-mode";
 import { AppShell } from "@/app/components/app-shell";
 import { TooltipProvider } from "@/app/components/ui/tooltip";
 import { Spinner } from "@/app/components/ui/spinner";
@@ -17,9 +18,15 @@ export default function DashboardLayout({
 }) {
     const router = useRouter();
     const posthog = usePostHog();
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!isSingleUserMode);
 
     useEffect(() => {
+        // Single-user mode: no Supabase session to check — open the app directly.
+        if (isSingleUserMode) {
+            posthog?.identify("single-user-local", { email: "local@zabt.local" });
+            return;
+        }
+
         const supabase = createClient();
 
         // Check initial session
@@ -53,7 +60,7 @@ export default function DashboardLayout({
         );
 
         return () => listener.subscription.unsubscribe();
-    }, [router]);
+    }, [router, posthog]);
 
     if (loading) {
         return (

@@ -9,8 +9,10 @@
 #   DATABASE_URL=postgresql+asyncpg://...    # managed Postgres (e.g. Supabase)
 #   STORAGE_PROVIDER=s3
 #   S3_ENDPOINT_URL=... S3_ACCESS_KEY_ID=... S3_SECRET_ACCESS_KEY=... S3_PUBLIC_URL=...
-#   TRANSCRIPTION_BACKEND=runpod
+#   TRANSCRIPTION_BACKEND=deepgram  (or runpod / groq)
 #   RUNPOD_API_KEY=... RUNPOD_ENDPOINT_ID=...
+#   DEEPGRAM_API_KEY=...            (when TRANSCRIPTION_BACKEND=deepgram)
+#   GROQ_API_KEY=...                (when TRANSCRIPTION_BACKEND=groq)
 #   APP_URL=https://app.your-domain    NEXT_PUBLIC_API_URL=https://api.your-domain/api/v1
 #
 # The frontend (web) is typically hosted separately (e.g. Vercel) in this topology, so
@@ -46,16 +48,40 @@ services:
     # Behind Kong — no need to publish 8000 on the host in production.
     ports: !reset []
     environment:
+      SINGLE_USER_MODE: ${SINGLE_USER_MODE:-false}
       TRANSCRIPTION_BACKEND: ${TRANSCRIPTION_BACKEND:-runpod}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-s3}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      DEEPGRAM_BASE_URL: ${DEEPGRAM_BASE_URL:-https://api.deepgram.com}
+      DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
+      DEEPGRAM_DIARIZE: ${DEEPGRAM_DIARIZE:-true}
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-600}
+      DEEPGRAM_MAX_FILE_MB: ${DEEPGRAM_MAX_FILE_MB:-512}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_TRANSCRIBE_MODEL: ${GROQ_TRANSCRIBE_MODEL:-whisper-large-v3}
+      GROQ_TIMEOUT: ${GROQ_TIMEOUT:-600}
+      GROQ_MAX_FILE_MB: ${GROQ_MAX_FILE_MB:-25}
 
   worker:
     environment:
+      SINGLE_USER_MODE: ${SINGLE_USER_MODE:-false}
       TRANSCRIPTION_BACKEND: ${TRANSCRIPTION_BACKEND:-runpod}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-s3}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      DEEPGRAM_BASE_URL: ${DEEPGRAM_BASE_URL:-https://api.deepgram.com}
+      DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
+      DEEPGRAM_DIARIZE: ${DEEPGRAM_DIARIZE:-true}
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-600}
+      DEEPGRAM_MAX_FILE_MB: ${DEEPGRAM_MAX_FILE_MB:-512}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_TRANSCRIBE_MODEL: ${GROQ_TRANSCRIBE_MODEL:-whisper-large-v3}
+      GROQ_TIMEOUT: ${GROQ_TIMEOUT:-600}
+      GROQ_MAX_FILE_MB: ${GROQ_MAX_FILE_MB:-25}
 
   beat:
     environment:

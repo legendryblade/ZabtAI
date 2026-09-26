@@ -17,14 +17,16 @@ and notes which are required. Values marked **REQUIRED** must be set for a worki
 | `DATABASE_URL` | `postgresql+asyncpg://app:app@db:5432/zabt` | **REQUIRED.** Local default targets the bundled `db`. Use your managed Postgres URL otherwise. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `app` / `app` / `zabt` | Credentials for the bundled Postgres (profile `local`). |
 
-## Auth (Supabase)
+## Auth
 
 | Variable | Notes |
 |----------|-------|
-| `SUPABASE_URL` | **REQUIRED.** Your Supabase project URL. |
-| `SUPABASE_JWT_SECRET` | **REQUIRED.** Project Settings → API → JWT. Verifies user tokens. |
-| `NEXT_PUBLIC_SUPABASE_URL` | **REQUIRED.** Same as `SUPABASE_URL` (browser-side). |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **REQUIRED.** Anon/publishable key. |
+| `SINGLE_USER_MODE` | `false` (default). `true` = **no login**: skips Supabase JWT verification and auto-provisions one local user. For personal/local use only — never enable on a public deployment. |
+| `NEXT_PUBLIC_SINGLE_USER_MODE` | Frontend mirror of the above. Set both to `true` together. |
+| `SUPABASE_URL` | Required only when `SINGLE_USER_MODE=false`. Your Supabase project URL. |
+| `SUPABASE_JWT_SECRET` | Required only when `SINGLE_USER_MODE=false`. Project Settings → API → JWT. Verifies user tokens. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Required only when `SINGLE_USER_MODE=false`. Same as `SUPABASE_URL` (browser-side). |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Required only when `SINGLE_USER_MODE=false`. Anon/publishable key. |
 
 ## URLs
 
@@ -42,6 +44,7 @@ and notes which are required. Values marked **REQUIRED** must be set for a worki
 | `OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` | Any OpenAI-compatible endpoint. |
 | `OPENAI_API_KEY` | — | **REQUIRED.** |
 | `OPENAI_MODEL` | `google/gemini-3.1-flash-lite-preview` | Model id understood by your endpoint. |
+| `TRANSCRIPT_EDIT_MAX_ACTIVE_JOBS` | `3` | Maximum queued or processing AI transcript edits per meeting. |
 
 ## Object storage
 
@@ -60,15 +63,24 @@ and notes which are required. Values marked **REQUIRED** must be set for a worki
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `TRANSCRIPTION_BACKEND` | `gpu-local` | `gpu-local` (bundled worker) or `runpod`. |
+| `TRANSCRIPTION_BACKEND` | `gpu-local` | `gpu-local` (bundled worker), `runpod`, `deepgram` (hosted Nova + diarization), or `groq` (hosted Whisper — free-tier friendly, no diarization). |
 | `GPU_SERVICE_URL` | `http://worker-gpu:8001` | Local GPU worker URL. |
 | `WHISPER_MODEL` | `large-v3` | `tiny`/`base`/`small`/`medium`/`large-v3`. Smaller = faster/less VRAM. |
 | `DIARIZATION_MODEL` | `pyannote/speaker-diarization-3.1` | Gated on HF — accept terms. |
 | `MEDASR_MODEL` | `google/medasr` | Optional medical ASR model. |
-| `HF_TOKEN` | — | **REQUIRED for diarization.** Accept the pyannote gate first. |
+| `HF_TOKEN` | — | **REQUIRED for local/runpod diarization.** Accept the pyannote gate first. Not needed for `TRANSCRIPTION_BACKEND=deepgram`. |
 | `DIARIZATION_MIN_SPEAKERS` / `DIARIZATION_MAX_SPEAKERS` | `1` / `10` | Speaker-count bounds. |
 | `RUNPOD_API_KEY` / `RUNPOD_ENDPOINT_ID` | — | Used when `TRANSCRIPTION_BACKEND=runpod`. |
 | `RUNPOD_POLL_INTERVAL` / `RUNPOD_TIMEOUT` | `5` / `1800` | Poll cadence / job timeout (s). |
+| `DEEPGRAM_API_KEY` | — | **REQUIRED when `TRANSCRIPTION_BACKEND=deepgram`.** https://console.deepgram.com/keys |
+| `DEEPGRAM_BASE_URL` | `https://api.deepgram.com` | Use `https://api.eu.deepgram.com` for EU data residency. |
+| `DEEPGRAM_MODEL` | `nova-3` | Deepgram pre-recorded model. |
+| `DEEPGRAM_DIARIZE` | `true` | Speaker labels via `diarize_model=latest` (included with pre-recorded Nova). |
+| `DEEPGRAM_TIMEOUT` / `DEEPGRAM_MAX_FILE_MB` | `600` / `512` | Request timeout (s) / upload cap; larger files are re-encoded with ffmpeg. Medical mode not supported. |
+| `GROQ_API_KEY` | — | **REQUIRED when `TRANSCRIPTION_BACKEND=groq`.** https://console.groq.com/keys |
+| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq OpenAI-compatible base URL. |
+| `GROQ_TRANSCRIBE_MODEL` | `whisper-large-v3` | Or `whisper-large-v3-turbo` / `distil-whisper-large-v3-en`. |
+| `GROQ_TIMEOUT` / `GROQ_MAX_FILE_MB` | `600` / `25` | Request timeout (s) / upload cap; larger files are re-encoded with ffmpeg. |
 
 ## Visual breakdown (optional; profile `vision`)
 

@@ -3,7 +3,21 @@
 import re
 
 import mistune
-import weasyprint
+
+
+weasyprint = None
+
+
+def _get_weasyprint():
+    global weasyprint
+    if weasyprint is not None:
+        return weasyprint
+    try:
+        import weasyprint as weasyprint_module
+    except (ImportError, OSError):
+        return None
+    weasyprint = weasyprint_module
+    return weasyprint
 
 
 # Arabic script Unicode ranges (covers Arabic, Urdu, Farsi, etc.)
@@ -64,10 +78,15 @@ class PdfExportService:
 
         # Resolve speaker names from segments
         speaker_names: list[str] = []
+        profile_names = {
+            profile.speaker_key: profile.display_name
+            for profile in (meeting.speaker_profiles or [])
+        }
         if meeting.segments:
             seen: set[str] = set()
             for seg in meeting.segments:
-                name = seg.speaker or "Unknown Speaker"
+                speaker_key = seg.speaker or "SPEAKER_UNKNOWN"
+                name = profile_names.get(speaker_key, speaker_key)
                 if name not in seen:
                     seen.add(name)
                     speaker_names.append(name)
@@ -178,7 +197,10 @@ class PdfExportService:
 
         body = f"{metadata}\n{summary_html}\n{action_items_html}"
         html_doc = self._build_html_document(body)
-        return weasyprint.HTML(string=html_doc).write_pdf()
+        pdf_engine = _get_weasyprint()
+        if pdf_engine is None:
+            raise RuntimeError("PDF export is unavailable")
+        return pdf_engine.HTML(string=html_doc).write_pdf()
 
     def generate_transcript_pdf(self, meeting, segments, speakers: dict) -> bytes:
         """Generate a PDF of the meeting transcript with speaker labels and timestamps."""
@@ -211,7 +233,10 @@ class PdfExportService:
 
         body = f"{metadata}\n{''.join(parts)}"
         html_doc = self._build_html_document(body)
-        return weasyprint.HTML(string=html_doc).write_pdf()
+        pdf_engine = _get_weasyprint()
+        if pdf_engine is None:
+            raise RuntimeError("PDF export is unavailable")
+        return pdf_engine.HTML(string=html_doc).write_pdf()
 
 
 pdf_export_service = PdfExportService()

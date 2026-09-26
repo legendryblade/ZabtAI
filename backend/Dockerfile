@@ -4,7 +4,7 @@
 # ============================================================
 FROM python:3.11-slim AS api
 
-# System dependencies: PostgreSQL runtime + WeasyPrint (Pango/HarfBuzz) + Noto fonts
+# System dependencies: PostgreSQL runtime + WeasyPrint (Pango/HarfBuzz) + Noto fonts + ffmpeg (Groq re-encode)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libpango-1.0-0 \
@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libharfbuzz-subset0 \
     libharfbuzz0b \
     fonts-noto-core \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

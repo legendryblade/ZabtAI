@@ -9,12 +9,117 @@ export interface TranscriptWord {
 }
 
 export interface TranscriptSegment {
+  id: number;
   start: number;
   end: number;
   speaker: string;
+  speaker_name?: string | null;
   text: string;
+  text_edited?: boolean;
+  word_alignment_valid?: boolean;
   words: TranscriptWord[];
 }
+
+export type TranscriptEditScopeType =
+  | "whole_transcript"
+  | "segments"
+  | "speakers";
+
+export type TranscriptEditScope =
+  | { type: "whole_transcript" }
+  | { type: "segments"; segment_ids: number[] }
+  | { type: "speakers"; speaker_keys: string[] };
+
+export interface TranscriptEditReplaceTextBefore {
+  segment_id: number;
+  text: string;
+  speaker: string | null;
+  start_time: number;
+  end_time: number;
+  words: TranscriptWord[];
+}
+
+export interface TranscriptEditRenameSpeakerBefore {
+  speaker_key: string;
+  display_name: string;
+}
+
+export interface TranscriptEditReassignSpeakerBeforeSegment {
+  segment_id: number;
+  speaker: string | null;
+}
+
+export interface TranscriptEditReassignSpeakerBefore {
+  segments: TranscriptEditReassignSpeakerBeforeSegment[];
+}
+
+export interface TranscriptEditReplaceTextOperation {
+  operation: "replace_text";
+  segment_id: number;
+  replacement_text: string;
+  before: TranscriptEditReplaceTextBefore;
+}
+
+export interface TranscriptEditRenameSpeakerOperation {
+  operation: "rename_speaker";
+  speaker_key: string;
+  display_name: string;
+  before: TranscriptEditRenameSpeakerBefore;
+}
+
+export interface TranscriptEditReassignSpeakerOperation {
+  operation: "reassign_speaker";
+  segment_ids: number[];
+  target_speaker_key: string;
+  before: TranscriptEditReassignSpeakerBefore;
+}
+
+export type TranscriptEditOperation =
+  | TranscriptEditReplaceTextOperation
+  | TranscriptEditRenameSpeakerOperation
+  | TranscriptEditReassignSpeakerOperation;
+
+export interface TranscriptEditProposal {
+  operations: TranscriptEditOperation[];
+}
+
+export type TranscriptEditJobStatus =
+  | "queued"
+  | "processing"
+  | "completed"
+  | "applied"
+  | "failed"
+  | "discarded";
+
+export interface TranscriptEditJob {
+  id: string;
+  meeting_id: number;
+  requested_by: number;
+  instruction: string;
+  scope: TranscriptEditScope;
+  base_revision: number;
+  status: TranscriptEditJobStatus;
+  proposal: TranscriptEditProposal | null;
+  error: string | null;
+  created_at: string;
+  applied_at: string | null;
+}
+
+export interface TranscriptEditCreateRequest {
+  instruction: string;
+  scope: TranscriptEditScope;
+}
+
+export interface TranscriptEditApplyRequest {
+  expected_revision?: number;
+}
+
+export type TranscriptEditDiscardRequest = Record<string, never>;
+
+export type TranscriptEditStatus = TranscriptEditJobStatus;
+export type ReplaceTextOperation = TranscriptEditReplaceTextOperation;
+export type RenameSpeakerOperation = TranscriptEditRenameSpeakerOperation;
+export type ReassignSpeakerOperation = TranscriptEditReassignSpeakerOperation;
 
 export interface SpeakerBreakdown {
   percentage: number;
@@ -33,6 +138,10 @@ export interface Meeting {
   status: MeetingStatus;
   sub_status: string | null;
   transcript_text: string | null;
+  transcript_revision?: number;
+  derived_transcript_revision?: number;
+  derived_transcript_stale?: boolean;
+  transcript_derived_stale?: boolean;
   summary_text: string | null;
   original_summary_text: string | null;
   summary_edited: boolean;

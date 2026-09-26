@@ -1,20 +1,23 @@
 # Self-hosting zabt.ai (single machine)
 
 This is the default and simplest deployment: everything runs on one machine via Docker
-Compose — API, workers, GPU transcription, Postgres, Redis, MinIO object storage, and the web
-UI. The only external dependency is a Supabase project for authentication (a free one works)
-and an LLM API key.
+Compose — API, workers, Postgres, Redis, MinIO object storage, and the web UI.
+Authentication is either **single-user local mode** (no login; set
+`SINGLE_USER_MODE=true` + `NEXT_PUBLIC_SINGLE_USER_MODE=true`) or multi-user via a
+free Supabase project. An LLM API key is always required.
 
 ## 1. Prerequisites
 
 - **Docker** and **Docker Compose v2** (`docker compose version`).
 - For GPU transcription: an **NVIDIA GPU** + the
   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-  No GPU is fine — see [CPU-only](#cpu-only).
+  No GPU is fine — use [CPU-only](#cpu-only), hosted Deepgram Nova
+  (`TRANSCRIPTION_BACKEND=deepgram` + `DEEPGRAM_API_KEY`; includes diarization),
+  or hosted Groq Whisper (`TRANSCRIPTION_BACKEND=groq` + `GROQ_API_KEY`; no diarization).
 - ~10-15 GB free disk for model weights and media.
-- A **Supabase** project (free): https://supabase.com
 - An **OpenAI-compatible LLM** key (OpenRouter, OpenAI, or a local Ollama/vLLM/LM Studio).
-- A **Hugging Face** token with the pyannote gate accepted (see below).
+- Multi-user auth only: a **Supabase** project (free): https://supabase.com
+- Local GPU diarization only: a **Hugging Face** token with the pyannote gate accepted (see below).
 
 ## 2. Configure
 
@@ -28,15 +31,18 @@ Edit `.env` and set at minimum:
 
 | Variable | Where to get it |
 |----------|-----------------|
-| `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
-| `SUPABASE_JWT_SECRET` | Supabase → Project Settings → API → JWT Settings |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API (anon/publishable key) |
 | `OPENAI_API_KEY` | Your LLM provider (e.g. https://openrouter.ai/keys) |
-| `HF_TOKEN` | https://huggingface.co/settings/tokens (accept pyannote gate first) |
+| `DEEPGRAM_API_KEY` or `GROQ_API_KEY` | Hosted transcription (Deepgram includes diarization) |
+| `SINGLE_USER_MODE=true` + `NEXT_PUBLIC_SINGLE_USER_MODE=true` | **Local/personal use** — no login, no Supabase needed |
+| `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `NEXT_PUBLIC_SUPABASE_*` | Only if `SINGLE_USER_MODE=false` (multi-user). Supabase → Project Settings → API |
+| `HF_TOKEN` | Only for local GPU diarization: https://huggingface.co/settings/tokens (accept pyannote gate first; not needed for `TRANSCRIPTION_BACKEND=deepgram`) |
 
 Leave `COMPOSE_PROFILES=local` and the bundled `DATABASE_URL` / MinIO defaults as-is.
 
-### pyannote Hugging Face gate
+### pyannote Hugging Face gate (local GPU diarization only)
+
+Only needed when using `TRANSCRIPTION_BACKEND=gpu-local` with diarization. Skipped
+entirely for Deepgram/Groq backends and single-user mode without a GPU.
 
 Diarization models are gated and **not** bundled with this repo. Accept the terms on:
 - https://huggingface.co/pyannote/speaker-diarization-3.1
@@ -105,5 +111,6 @@ Tunnel). Update `APP_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_FRONTEND_URL`,
   accepted.
 - **Uploads don't trigger transcription** → check the `minio-init` container configured the
   bucket webhook, and that `MINIO_WEBHOOK_SECRET` matches between MinIO and the API.
-- **Auth errors** → verify the four `SUPABASE_*` values and that `SUPABASE_JWT_SECRET` matches
+- **Auth errors** → if `SINGLE_USER_MODE=true`, auth is skipped (no token needed). If
+  multi-user, verify the four `SUPABASE_*` values and that `SUPABASE_JWT_SECRET` matches
   your project.

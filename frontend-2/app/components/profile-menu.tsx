@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Settings, HelpCircle, LogOut } from "lucide-react";
 import { clearToken, fetchCurrentUser } from "@/app/lib/api";
+import { isSingleUserMode } from "@/app/lib/auth-mode";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +36,10 @@ export function ProfileMenu({ children }: ProfileMenuProps) {
   const [minutesUsed, setMinutesUsed] = useState<number | null>(null);
 
   useEffect(() => {
+    if (isSingleUserMode) {
+      setMinutesUsed(0);
+      return;
+    }
     fetchCurrentUser()
       .then((user) => setMinutesUsed(user.minutes_used_this_month))
       .catch(() => {/* silently ignore */});
@@ -81,37 +86,43 @@ export function ProfileMenu({ children }: ProfileMenuProps) {
             <HelpCircle />
             Help Center
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={() => setConfirmingLogout(true)}
-          >
-            <LogOut />
-            Logout
-          </DropdownMenuItem>
+          {!isSingleUserMode && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setConfirmingLogout(true)}
+              >
+                <LogOut />
+                Logout
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AlertDialog open={confirmingLogout} onOpenChange={setConfirmingLogout}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm logout?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You will be redirected to the login page.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={loggingOut}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {loggingOut ? "Logging out..." : "Logout"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {!isSingleUserMode && (
+        <AlertDialog open={confirmingLogout} onOpenChange={setConfirmingLogout}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm logout?</AlertDialogTitle>
+              <AlertDialogDescription>
+                You will be redirected to the login page.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={loggingOut}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {loggingOut ? "Logging out..." : "Logout"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </>
   );
 }

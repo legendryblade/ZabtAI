@@ -14,11 +14,32 @@ import type {
   SpeakerBreakdown,
   SummaryTemplate,
   SummaryTemplateListItem,
+  TranscriptEditApplyRequest,
+  TranscriptEditCreateRequest,
+  TranscriptEditDiscardRequest,
+  TranscriptEditJob,
+  TranscriptEditJobStatus,
+  TranscriptEditOperation,
+  TranscriptEditProposal,
+  RenameSpeakerOperation,
+  ReassignSpeakerOperation,
+  ReplaceTextOperation,
+  TranscriptEditRenameSpeakerBefore,
+  TranscriptEditRenameSpeakerOperation,
+  TranscriptEditReassignSpeakerBefore,
+  TranscriptEditReassignSpeakerBeforeSegment,
+  TranscriptEditReassignSpeakerOperation,
+  TranscriptEditReplaceTextBefore,
+  TranscriptEditReplaceTextOperation,
+  TranscriptEditScope,
+  TranscriptEditScopeType,
+  TranscriptEditStatus,
   TranscriptSegment,
   TranscriptWord,
   User,
 } from "@zabt/shared";
 import { createClient } from "@/app/lib/supabase/client";
+import { isSingleUserMode } from "@/app/lib/auth-mode";
 
 // Re-export for internal consumers that import from @/app/lib/api
 export type {
@@ -33,6 +54,26 @@ export type {
   SpeakerBreakdown,
   SummaryTemplate,
   SummaryTemplateListItem,
+  TranscriptEditApplyRequest,
+  TranscriptEditCreateRequest,
+  TranscriptEditDiscardRequest,
+  TranscriptEditJob,
+  TranscriptEditJobStatus,
+  TranscriptEditOperation,
+  TranscriptEditProposal,
+  RenameSpeakerOperation,
+  ReassignSpeakerOperation,
+  ReplaceTextOperation,
+  TranscriptEditRenameSpeakerBefore,
+  TranscriptEditRenameSpeakerOperation,
+  TranscriptEditReassignSpeakerBefore,
+  TranscriptEditReassignSpeakerBeforeSegment,
+  TranscriptEditReassignSpeakerOperation,
+  TranscriptEditReplaceTextBefore,
+  TranscriptEditReplaceTextOperation,
+  TranscriptEditScope,
+  TranscriptEditScopeType,
+  TranscriptEditStatus,
   TranscriptSegment,
   TranscriptWord,
   User,
@@ -44,12 +85,14 @@ const API_URL =
 // ── Token helpers (Supabase manages sessions; these read from its session) ────
 
 export const getToken = async (): Promise<string | null> => {
+  if (isSingleUserMode) return null;
   const supabase = createClient();
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
 };
 
 export const clearToken = async (): Promise<void> => {
+  if (isSingleUserMode) return;
   const supabase = createClient();
   await supabase.auth.signOut();
 };
@@ -59,11 +102,13 @@ export const clearToken = async (): Promise<void> => {
 const apiClient = createApiClient({
   baseURL: API_URL,
   getAuthToken: async () => {
+    if (isSingleUserMode) return null;
     const supabase = createClient();
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token ?? null;
   },
   onUnauthorized: async () => {
+    if (isSingleUserMode) return;
     if (typeof window !== "undefined") {
       const supabase = createClient();
       await supabase.auth.signOut();
@@ -220,6 +265,55 @@ export const getMeetings = async (
 
 export const getMeeting = async (id: number): Promise<Meeting> => {
   const res = await apiClient.get<Meeting>(`/meetings/${id}`);
+  return res.data;
+};
+
+export const createTranscriptEdit = async (
+  meetingId: number,
+  request: TranscriptEditCreateRequest
+): Promise<TranscriptEditJob> => {
+  const res = await apiClient.post<TranscriptEditJob>(
+    `/meetings/${meetingId}/transcript-edits`,
+    request
+  );
+  return res.data;
+};
+
+export const getTranscriptEdit = async (
+  meetingId: number,
+  jobId: string
+): Promise<TranscriptEditJob> => {
+  const res = await apiClient.get<TranscriptEditJob>(
+    `/meetings/${meetingId}/transcript-edits/${jobId}`
+  );
+  return res.data;
+};
+
+export const applyTranscriptEdit = async (
+  meetingId: number,
+  jobId: string,
+  expectedRevision?: number
+): Promise<TranscriptEditJob> => {
+  const body: TranscriptEditApplyRequest = {};
+  if (expectedRevision !== undefined) {
+    body.expected_revision = expectedRevision;
+  }
+  const res = await apiClient.post<TranscriptEditJob>(
+    `/meetings/${meetingId}/transcript-edits/${jobId}/apply`,
+    body
+  );
+  return res.data;
+};
+
+export const discardTranscriptEdit = async (
+  meetingId: number,
+  jobId: string
+): Promise<TranscriptEditJob> => {
+  const body: TranscriptEditDiscardRequest = {};
+  const res = await apiClient.post<TranscriptEditJob>(
+    `/meetings/${meetingId}/transcript-edits/${jobId}/discard`,
+    body
+  );
   return res.data;
 };
 

@@ -44,22 +44,24 @@ flowchart LR
 ```
 
 The GPU worker runs locally by default; in the cloud topology it is a RunPod serverless
-endpoint. Authentication is delegated to Supabase (a free project works).
+endpoint. Authentication is single-user local mode by default in this setup (no login)
+or multi-user via Supabase.
 
 ## Quick start (single machine)
 
 **Prerequisites:** Docker + Docker Compose. For GPU transcription: an NVIDIA GPU with the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-No GPU? See [CPU-only](#cpu-only) below.
+No GPU? See [CPU-only](#cpu-only) below, or set `TRANSCRIPTION_BACKEND=deepgram` + `DEEPGRAM_API_KEY` for hosted Nova ASR with speaker diarization ($200 free credit, no card).
 
 ```bash
 git clone https://github.com/afeef/zabt-ai.git
 cd zabt-ai
 cp .env.example .env
-#   Edit .env and set the 4 REQUIRED values:
-#     SUPABASE_URL / SUPABASE_JWT_SECRET / NEXT_PUBLIC_SUPABASE_* (one free Supabase project)
+#   Edit .env and set at minimum:
+#     SINGLE_USER_MODE=true + NEXT_PUBLIC_SINGLE_USER_MODE=true   (local/no-login — recommended)
 #     OPENAI_API_KEY   (any OpenAI-compatible LLM key)
-#     HF_TOKEN         (Hugging Face token — accept the pyannote gate, see below)
+#     DEEPGRAM_API_KEY or GROQ_API_KEY (hosted transcription)
+#   For multi-user auth instead: set SUPABASE_* / NEXT_PUBLIC_SUPABASE_* (free Supabase project)
 docker compose up -d
 ```
 
@@ -69,6 +71,8 @@ Then open:
 - MinIO console → http://localhost:9001
 
 First run downloads the Whisper + pyannote model weights (several GB) into a cached volume.
+
+For a native Windows setup without Docker, including PostgreSQL, Redis, MinIO, pip requirements, and run commands, see [docs/native-development.md](docs/native-development.md).
 
 ### CPU-only
 
@@ -93,6 +97,7 @@ you accept the terms and download them yourself:**
 
 - Audio/video upload → transcription → diarization → LLM summary
 - Speaker-labeled, timestamped transcripts with an in-app viewer and editor
+- Prompt-based AI transcript and diarization editing with review-before-apply
 - Customizable summary templates
 - YouTube URL ingestion
 - Microsoft Teams meeting bot (joins and records) *(optional)*
@@ -125,6 +130,8 @@ plus ~2-4 GB for pyannote diarization:
 |----------|---------|-----|
 | Single machine (default) | `docker compose up -d` | Self-host everything on one box with a local GPU |
 | CPU-only | `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d` | No GPU available |
+| Deepgram (no GPU) | set `TRANSCRIPTION_BACKEND=deepgram` + `DEEPGRAM_API_KEY` in `.env` | Hosted Nova ASR + diarization — $200 free credit |
+| Groq (no GPU) | set `TRANSCRIPTION_BACKEND=groq` + `GROQ_API_KEY` in `.env` | Hosted Whisper free tier — no diarization yet |
 | Cloud / RunPod split | `docker compose -f docker-compose.yml -f docker-compose.cloud.yml up -d` | Small API VPS + serverless GPU; managed DB/storage |
 
 See [docs/self-hosting.md](docs/self-hosting.md) and

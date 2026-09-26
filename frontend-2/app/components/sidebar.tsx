@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/app/lib/supabase/client";
+import { isSingleUserMode } from "@/app/lib/auth-mode";
 import { ProfileMenu } from "@/app/components/profile-menu";
 import clsx from "clsx";
 
@@ -14,12 +15,6 @@ import clsx from "clsx";
 const HomeIcon = () => (
     <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
         <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7A1 1 0 003 11h1v6a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6h1a1 1 0 00.707-1.707l-7-7z" />
-    </svg>
-);
-const ChatIcon = () => (
-    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
-        <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
     </svg>
 );
 const IntegrationsIcon = () => (
@@ -50,7 +45,6 @@ const HashIcon = () => (
 
 const NAV_LINKS = [
     { href: "/", label: "Home", icon: <HomeIcon /> },
-    { href: "/ai-chat", label: "AI Chat", icon: <ChatIcon /> },
     { href: "/templates", label: "Templates", icon: <TemplatesIcon /> },
     { href: "/integrations", label: "Integrations", icon: <IntegrationsIcon /> },
     { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
@@ -62,13 +56,16 @@ interface SidebarProps {
 
 export function Sidebar({ onNavClick }: SidebarProps) {
     const pathname = usePathname();
-    const [userName, setUserName] = useState("User");
-    const [userEmail, setUserEmail] = useState("");
+    const [userName, setUserName] = useState(isSingleUserMode ? "Local User" : "User");
+    const [userEmail, setUserEmail] = useState(isSingleUserMode ? "local@zabt.local" : "");
     const [channelsOpen, setChannelsOpen] = useState(true);
     const [dmOpen, setDmOpen] = useState(true);
     const [foldersOpen, setFoldersOpen] = useState(false);
 
     useEffect(() => {
+        if (isSingleUserMode) {
+            return;
+        }
         const supabase = createClient();
         supabase.auth.getUser().then(({ data }) => {
             if (data.user) {

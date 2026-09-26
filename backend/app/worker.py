@@ -21,6 +21,7 @@ from app.db.engine import engine
 from app.models import Meeting, TranscriptSegment, TranscriptionBackend, TranscriptionType, User
 from app.services.meeting import meeting_service
 from app.services.storage import storage
+from app.services.transcript import serialize_transcript
 from app.services.transcription import get_provider, build_config
 from app.services.styles import style_service
 from app.services.ai_agent import summarize_transcript
@@ -36,6 +37,13 @@ def flush_analytics(**kwargs):
     analytics.shutdown()
 
 celery_app = Celery("worker", broker=settings.REDIS_URL, backend=settings.REDIS_URL)
+
+
+@celery_app.task(name="process_transcript_edit", ignore_result=True)
+def process_transcript_edit(edit_id: str) -> str:
+    from app.services.transcript_edit_jobs import process_edit_job
+
+    return process_edit_job(edit_id)
 
 
 # ── Notification task ────────────────────────────────────────────────────────
@@ -249,14 +257,20 @@ def stage_transcribe(meeting_id: int) -> int:
 
         # Write segments to DB
         with Session(engine) as session:
-            # Delete old segments if this is a retried job
+            meeting_obj = session.exec(
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .with_for_update()
+            ).first()
+            if meeting_obj is None:
+                raise ValueError(f"Meeting {meeting_id} not found.")
+
             old_segments = session.exec(
                 select(TranscriptSegment).where(TranscriptSegment.meeting_id == meeting_id)
             ).all()
             for old in old_segments:
                 session.delete(old)
 
-            # Write new segments from TranscriptionResult
             for seg in result.segments:
                 words_dicts = [
                     {
@@ -277,11 +291,25 @@ def stage_transcribe(meeting_id: int) -> int:
                 )
                 session.add(db_segment)
 
-            meeting_obj = session.get(Meeting, meeting_id)
-            if meeting_obj:
-                meeting_obj.transcript_text = result.text
-                if result.audio_duration_seconds:
-                    meeting_obj.duration_seconds = int(result.audio_duration_seconds)
+            session.flush()
+            persisted_segments = session.exec(
+                select(TranscriptSegment)
+                .where(TranscriptSegment.meeting_id == meeting_id)
+                .order_by(TranscriptSegment.start_time, TranscriptSegment.id)
+            ).all()
+            from app.services.transcript_edit_jobs import sync_speaker_profiles
+
+            sync_speaker_profiles(session, meeting_id, persisted_segments)
+
+            meeting_obj.transcript_text = (
+                serialize_transcript(persisted_segments)
+                if persisted_segments
+                else result.text
+            )
+            meeting_obj.transcript_revision = int(meeting_obj.transcript_revision or 0) + 1
+            if result.audio_duration_seconds:
+                meeting_obj.duration_seconds = int(result.audio_duration_seconds)
+            session.add(meeting_obj)
             session.commit()
 
             # Update minutes used this month
@@ -455,6 +483,7 @@ def stage_summarize(meeting_id: int, template_id: int | None = None) -> int:
     meeting = meeting_service.get(Meeting, meeting_id)
     if not meeting:
         raise ValueError(f"Meeting {meeting_id} not found.")
+    source_revision = int(meeting.transcript_revision or 0)
 
     summary_text = None
     active_template = None
@@ -496,6 +525,7 @@ def stage_summarize(meeting_id: int, template_id: int | None = None) -> int:
         None,
         template_id=active_template.id if active_template else None,
         template_name=active_template.name if active_template else None,
+        source_revision=source_revision,
     )
 
     if inferred_title and meeting.title:
@@ -547,6 +577,7 @@ def stage_extract_intelligence(meeting_id: int) -> int:
     if not meeting or not meeting.transcript_text:
         logger.warning("stage_extract_intelligence: no transcript for meeting_id=%s", meeting_id)
         return meeting_id
+    source_revision = int(meeting.transcript_revision or 0)
 
     from app.services.meeting_intelligence import intelligence_service
 
@@ -574,8 +605,12 @@ def stage_extract_intelligence(meeting_id: int) -> int:
         with Session(engine) as session:
             db_meeting = session.get(Meeting, meeting_id)
             if db_meeting:
+                if int(db_meeting.transcript_revision or 0) != source_revision:
+                    session.rollback()
+                    return meeting_id
                 db_meeting.structured_output = structured_output
                 db_meeting.structured_output_status = "completed"
+                db_meeting.derived_transcript_revision = source_revision
                 session.add(db_meeting)
                 session.commit()
 

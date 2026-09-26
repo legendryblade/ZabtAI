@@ -25,8 +25,8 @@ const getSpeakerColor = (speaker: string) =>
 
 const getSpeakerLabel = (speaker: string) => {
     if (speaker === "SPEAKER_UNKNOWN") return "Unknown Speaker";
-    const num = speaker.split("_")[1];
-    return num !== undefined ? `Speaker ${parseInt(num) + 1}` : speaker;
+    const match = /^SPEAKER_(\d+)$/.exec(speaker);
+    return match ? `Speaker ${Number(match[1]) + 1}` : speaker;
 };
 
 const WordSpan = memo(({ word }: { word: TranscriptWord }) => {
@@ -58,7 +58,15 @@ function SegmentRow({
 }) {
     const { setSeekRequest } = useTranscriptStore();
     const words = Array.isArray(segment.words) ? segment.words : [];
-    const isUnknown = segment.speaker === "SPEAKER_UNKNOWN";
+    const speakerKey = segment.speaker || "SPEAKER_UNKNOWN";
+    const namedSpeaker = segment.speaker_name?.trim();
+    const speakerLabel =
+        namedSpeaker && namedSpeaker !== speakerKey
+            ? namedSpeaker
+            : getSpeakerLabel(speakerKey);
+    const isUnknown = speakerKey === "SPEAKER_UNKNOWN";
+    const hasCorrectedText =
+        segment.text_edited === true || segment.word_alignment_valid === false;
 
     return (
         <div
@@ -69,7 +77,7 @@ function SegmentRow({
             {/* Avatar */}
             <div className="flex-shrink-0 pt-0.5">
                 <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${getSpeakerColor(segment.speaker)}`}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${getSpeakerColor(speakerKey)}`}
                 >
                     {isUnknown ? (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -77,7 +85,7 @@ function SegmentRow({
                             <circle cx="12" cy="7" r="4" />
                         </svg>
                     ) : (
-                        getSpeakerLabel(segment.speaker).charAt(getSpeakerLabel(segment.speaker).indexOf(" ") + 1)
+                        speakerLabel.charAt(0).toUpperCase()
                     )}
                 </div>
             </div>
@@ -86,17 +94,20 @@ function SegmentRow({
             <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2 mb-1">
                     <span className="text-sm font-medium text-stone-900">
-                        {getSpeakerLabel(segment.speaker)}
+                        {speakerLabel}
                     </span>
                     <button
-                        className="text-xs text-stone-400 hover:text-primary transition-colors tabular-nums cursor-pointer"
-                        onClick={() => setSeekRequest(segment.start)}
+                         type="button"
+                         className="text-xs text-stone-400 hover:text-primary transition-colors tabular-nums cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                         onClick={() => setSeekRequest(segment.start)}
                     >
                         {formatTime(segment.start)}
                     </button>
                 </div>
                 <p className="text-sm leading-relaxed text-stone-700">
-                    {words.length > 0 ? (
+                    {hasCorrectedText ? (
+                        <span>{segment.text}</span>
+                    ) : words.length > 0 ? (
                         words.map((w, i) => <WordSpan key={i} word={w} />)
                     ) : (
                         segment.text
@@ -120,13 +131,15 @@ export function TranscriptViewer({
 
     return (
         <div className="divide-y divide-stone-100">
-            {[...segments].sort((a, b) => a.start - b.start).map((segment, index) => (
-                <SegmentRow
-                    key={index}
-                    segment={segment}
-                    isPaywalled={isFreeTier && segment.start >= 1800}
-                />
-            ))}
+            {[...segments]
+                .sort((a, b) => a.start - b.start || (a.id ?? 0) - (b.id ?? 0))
+                .map((segment, index) => (
+                    <SegmentRow
+                        key={segment.id ?? index}
+                        segment={segment}
+                        isPaywalled={isFreeTier && segment.start >= 1800}
+                    />
+                ))}
         </div>
     );
 }

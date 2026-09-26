@@ -37,10 +37,17 @@ class MeetingMinutes(BaseModel):
 
 # ── LLM client setup ────────────────────────────────────────────────────────
 
-_client = OpenAI(
-    base_url=settings.OPENAI_BASE_URL,
-    api_key=settings.OPENAI_API_KEY,
-)
+_client = None
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(
+            base_url=settings.OPENAI_BASE_URL or None,
+            api_key=settings.OPENAI_API_KEY,
+        )
+    return _client
 
 SYSTEM_PROMPT = """\
 You are Zabt, an expert meeting note-taker. You transform raw meeting transcripts into clear, well-structured meeting notes in markdown format.
@@ -106,7 +113,7 @@ def _build_system_prompt(style_examples: list[str] | None = None) -> str:
 def infer_title(summary_text: str) -> str | None:
     """Ask the LLM for a short, specific meeting title based on the summary."""
     try:
-        response = _client.chat.completions.create(
+        response = _get_client().chat.completions.create(
             model=settings.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": (
@@ -151,7 +158,7 @@ def summarize_transcript(
             "the following template format:\n\n"
             + template_body
         )
-    response = _client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model=settings.OPENAI_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},

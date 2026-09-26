@@ -32,7 +32,14 @@ class MeetingService(BaseService):
 
     def get_meeting(self, meeting_id: int) -> Optional[Meeting]:
         with Session(engine) as session:
-            statement = select(Meeting).where(Meeting.id == meeting_id).options(selectinload(Meeting.segments))
+            statement = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(
+                    selectinload(Meeting.segments),
+                    selectinload(Meeting.speaker_profiles),
+                )
+            )
             return session.exec(statement).first()
 
     def get_meetings(self, owner_id: int, skip: int = 0, limit: int = 100) -> List[Meeting]:
@@ -56,11 +63,14 @@ class MeetingService(BaseService):
                 Meeting.source_url,
                 Meeting.youtube_title,
                 Meeting.youtube_duration_seconds,
-                Meeting.youtube_thumbnail_url,
-                Meeting.youtube_channel,
-                Meeting.summary_edited,
-                func.left(Meeting.summary_text, 300).label("summary_text"),
-            ]
+                 Meeting.youtube_thumbnail_url,
+                 Meeting.youtube_channel,
+                 Meeting.summary_edited,
+                 Meeting.transcript_revision,
+                 Meeting.derived_transcript_revision,
+                 func.left(Meeting.summary_text, 300).label("summary_text"),
+             ]
+
             statement = (
                 select(*light_cols)
                 .where(Meeting.owner_id == owner_id)
@@ -126,22 +136,36 @@ class MeetingService(BaseService):
         action_items_text: str | None = None,
         template_id: int | None = None,
         template_name: str | None = None,
+        source_revision: int | None = None,
     ) -> Optional[Meeting]:
         """Mark a meeting as completed, clearing sub_status and setting final outputs."""
-        meeting = self.get(Meeting, meeting_id)
-        if not meeting:
-            return None
-        meeting.status = "completed"
-        meeting.sub_status = None
-        if summary_text is not None:
-            meeting.summary_text = summary_text
-        if action_items_text is not None:
-            meeting.action_items_text = action_items_text
-        if template_id is not None:
-            meeting.template_id = template_id
-        if template_name is not None:
-            meeting.template_name = template_name
-        return self.save(meeting)
+        with Session(engine) as session:
+            meeting = session.exec(
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .with_for_update()
+            ).first()
+            if not meeting:
+                return None
+            meeting.status = "completed"
+            meeting.sub_status = None
+            if (
+                source_revision is not None
+                and int(meeting.transcript_revision or 0) == source_revision
+            ):
+                meeting.derived_transcript_revision = source_revision
+            if summary_text is not None:
+                meeting.summary_text = summary_text
+            if action_items_text is not None:
+                meeting.action_items_text = action_items_text
+            if template_id is not None:
+                meeting.template_id = template_id
+            if template_name is not None:
+                meeting.template_name = template_name
+            session.add(meeting)
+            session.commit()
+            session.refresh(meeting)
+            return meeting
 
     def mark_failed(self, meeting_id: int, error_message: str) -> Optional[Meeting]:
         """Mark a meeting as failed with an error message in summary_text."""
@@ -154,13 +178,39 @@ class MeetingService(BaseService):
         return self.save(meeting)
 
     def add_segment(self, meeting_id: int, start: float, end: float, text: str) -> TranscriptSegment:
-        segment = TranscriptSegment(
-            meeting_id=meeting_id,
-            start_time=start,
-            end_time=end,
-            text=text
-        )
-        return self.save(segment)
+        from app.services.transcript import serialize_transcript
+        from app.services.transcript_edit_jobs import sync_speaker_profiles
+
+        with Session(engine) as session:
+            meeting = session.exec(
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .with_for_update()
+            ).first()
+            if meeting is None:
+                raise ValueError(f"Meeting {meeting_id} not found.")
+            segment = TranscriptSegment(
+                meeting_id=meeting_id,
+                start_time=start,
+                end_time=end,
+                text=text,
+            )
+            session.add(segment)
+            session.flush()
+            segments = list(
+                session.exec(
+                    select(TranscriptSegment)
+                    .where(TranscriptSegment.meeting_id == meeting_id)
+                    .order_by(TranscriptSegment.start_time, TranscriptSegment.id)
+                ).all()
+            )
+            sync_speaker_profiles(session, meeting_id, segments)
+            meeting.transcript_text = serialize_transcript(segments)
+            meeting.transcript_revision = int(meeting.transcript_revision or 0) + 1
+            session.add(meeting)
+            session.commit()
+            session.refresh(segment)
+            return segment
 
     def initiate_processing(self, file_key: str) -> Optional[Meeting]:
         """

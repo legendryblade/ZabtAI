@@ -40,8 +40,7 @@ yourself with your `HF_TOKEN`. See the [self-hosting guide](self-hosting.md#pyan
 
 ### Does my audio leave my server?
 
-Transcription and diarization run on your infrastructure (local GPU or your RunPod account).
-The one thing that leaves is the **transcript text sent to your chosen LLM** for
+Transcription and diarization run on your infrastructure (local GPU or your RunPod account), or on Groq/Deepgram if you select those hosted backends. The one thing that leaves is the **transcript text sent to your chosen LLM** for
 summarization — and you control which LLM. Point `OPENAI_BASE_URL` at a **local** model
 (Ollama/vLLM/LM Studio) to keep everything on-prem.
 
@@ -54,7 +53,7 @@ See [hardware requirements](../README.md#hardware-requirements).
 
 ### Do I need a GPU?
 
-No — a CPU-only path exists (`docker-compose.cpu.yml`), just slower. A GPU is strongly
+No — a CPU-only path exists (`docker-compose.cpu.yml`), just slower. For zero-GPU hosting with speaker labels, set `TRANSCRIPTION_BACKEND=deepgram` and `DEEPGRAM_API_KEY` (hosted Deepgram Nova ASR + diarization; $200 free credit). For a free-tier Whisper path without diarization, use `TRANSCRIPTION_BACKEND=groq` and `GROQ_API_KEY`. A GPU is strongly
 recommended for `large-v3` and for reasonable throughput.
 
 ### Do I need Kong?
@@ -64,9 +63,11 @@ single-machine stack does not use it.
 
 ### Do I need Supabase? Can I self-host auth?
 
-zabt.ai delegates authentication to Supabase. The easiest path is a **free Supabase cloud
-project**. You can also run **self-hosted Supabase** separately and point the `SUPABASE_*`
-variables at it — the app only needs the auth endpoints and the JWT secret.
+**No — not for local/personal use.** Set `SINGLE_USER_MODE=true` and
+`NEXT_PUBLIC_SINGLE_USER_MODE=true` in `.env`: the app runs with no login page and one
+auto-provisioned local user. For multi-user auth, the easiest path is a **free Supabase
+cloud project**. You can also run **self-hosted Supabase** separately and point the
+`SUPABASE_*` variables at it — the app only needs the auth endpoints and the JWT secret.
 
 ### Can I use S3 / Cloudflare R2 instead of MinIO?
 

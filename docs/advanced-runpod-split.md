@@ -46,6 +46,9 @@ S3_REGION=auto
 TRANSCRIPTION_BACKEND=runpod
 RUNPOD_API_KEY=...
 RUNPOD_ENDPOINT_ID=...
+# Alternative hosted backend (ASR + diarization, no GPU):
+# TRANSCRIPTION_BACKEND=deepgram
+# DEEPGRAM_API_KEY=...
 APP_URL=https://app.your-domain
 NEXT_PUBLIC_API_URL=https://api.your-domain/api/v1
 MINIO_PUBLIC_ENDPOINT=https://api.your-domain

@@ -17,9 +17,10 @@ zabt.ai is a monorepo: `backend/` (FastAPI + Celery), `frontend-2/` (Next.js), p
 vision workers and a shared TS package.
 
 ### Prerequisites
-- [uv](https://docs.astral.sh/uv/) for Python
+- Python 3.11+
 - Node.js 20+ and npm
-- Docker + Docker Compose (for the full stack / running dependencies)
+- PostgreSQL, Redis, and MinIO for native development
+- Docker + Docker Compose for the containerized full stack
 
 ### Fastest path: run the stack in Docker
 ```bash
@@ -27,18 +28,23 @@ cp .env.example .env      # fill the REQUIRED values (see README)
 docker compose up -d
 ```
 
+### Native development
+
+For Windows-native installation and startup, see [docs/native-development.md](docs/native-development.md). The backend can also be installed from `backend/requirements-dev.txt`:
+
+```powershell
+py -3.11 -m venv C:\Users\abdul\.venvs\zabt-backend
+& C:\Users\abdul\.venvs\zabt-backend\Scripts\python.exe -m pip install -r backend\requirements-dev.txt
+```
+
 ### Running services directly (for active development)
 ```bash
-# Backend API (with the DB/Redis/MinIO from docker compose running)
-cd backend && uv sync && uv run uvicorn app.main:app --reload --port 8000
-
-# Celery worker
+# Start PostgreSQL, Redis, and MinIO separately, then:
+cd backend && uv run uvicorn app.main:app --reload --port 8000
 cd backend && uv run celery -A app.worker.celery_app worker --loglevel=info
-
-# Frontend
 npm install
-npm run build:shared      # compile @zabt/shared once
-npm run dev:web           # Next.js dev server on :3000
+npm run build:shared
+npm run dev:web
 ```
 
 ## Code style

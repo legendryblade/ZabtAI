@@ -43,7 +43,8 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-google/gemini-3.1-flash-lite-preview}
-      # Auth (Supabase)
+      # Auth (Supabase) — SINGLE_USER_MODE=true skips JWT verification entirely
+      SINGLE_USER_MODE: ${SINGLE_USER_MODE:-false}
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
@@ -63,6 +64,19 @@ services:
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-zabt-ai-bucket}
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:-}
       S3_REGION: ${S3_REGION:-auto}
+      # Transcription (hosted path used for WS when TRANSCRIPTION_BACKEND=deepgram|groq)
+      TRANSCRIPTION_BACKEND: ${TRANSCRIPTION_BACKEND:-gpu-local}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      DEEPGRAM_BASE_URL: ${DEEPGRAM_BASE_URL:-https://api.deepgram.com}
+      DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
+      DEEPGRAM_DIARIZE: ${DEEPGRAM_DIARIZE:-true}
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-600}
+      DEEPGRAM_MAX_FILE_MB: ${DEEPGRAM_MAX_FILE_MB:-512}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_TRANSCRIBE_MODEL: ${GROQ_TRANSCRIBE_MODEL:-whisper-large-v3}
+      GROQ_TIMEOUT: ${GROQ_TIMEOUT:-600}
+      GROQ_MAX_FILE_MB: ${GROQ_MAX_FILE_MB:-25}
       # Integrations / notifications (all optional)
       MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
@@ -103,6 +117,7 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-google/gemini-3.1-flash-lite-preview}
+      SINGLE_USER_MODE: ${SINGLE_USER_MODE:-false}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       APP_URL: ${APP_URL:-http://localhost:3000}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-minio}
@@ -116,13 +131,24 @@ services:
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-zabt-ai-bucket}
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:-}
       S3_REGION: ${S3_REGION:-auto}
-      # Transcription backend: "gpu-local" (bundled worker-gpu) or "runpod"
+      # Transcription backend: "gpu-local", "runpod", "deepgram", or "groq"
       TRANSCRIPTION_BACKEND: ${TRANSCRIPTION_BACKEND:-gpu-local}
       GPU_SERVICE_URL: ${GPU_SERVICE_URL:-http://worker-gpu:8001}
       RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
       RUNPOD_ENDPOINT_ID: ${RUNPOD_ENDPOINT_ID:-}
       RUNPOD_POLL_INTERVAL: ${RUNPOD_POLL_INTERVAL:-5}
       RUNPOD_TIMEOUT: ${RUNPOD_TIMEOUT:-1800}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      DEEPGRAM_BASE_URL: ${DEEPGRAM_BASE_URL:-https://api.deepgram.com}
+      DEEPGRAM_MODEL: ${DEEPGRAM_MODEL:-nova-3}
+      DEEPGRAM_DIARIZE: ${DEEPGRAM_DIARIZE:-true}
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-600}
+      DEEPGRAM_MAX_FILE_MB: ${DEEPGRAM_MAX_FILE_MB:-512}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_TRANSCRIBE_MODEL: ${GROQ_TRANSCRIBE_MODEL:-whisper-large-v3}
+      GROQ_TIMEOUT: ${GROQ_TIMEOUT:-600}
+      GROQ_MAX_FILE_MB: ${GROQ_MAX_FILE_MB:-25}
       # Vision (visual breakdown) backend: "local" or "runpod"
       VISION_BACKEND: ${VISION_BACKEND:-local}
       VISION_LOCAL_URL: ${VISION_LOCAL_URL:-http://zabt-vision-worker:8003}
@@ -271,6 +297,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
       NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SINGLE_USER_MODE: ${NEXT_PUBLIC_SINGLE_USER_MODE:-false}
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       NEXT_PUBLIC_POSTHOG_KEY: ${NEXT_PUBLIC_POSTHOG_KEY:-}

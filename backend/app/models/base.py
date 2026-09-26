@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2025-2026 Afeef Janjua
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional, List
 from enum import Enum
+from uuid import uuid4
 from sqlmodel import Field, SQLModel, Relationship
-from sqlalchemy import Column
+from sqlalchemy import CheckConstraint, Column, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 
 
@@ -16,6 +17,18 @@ class TranscriptionType(str, Enum):
 class TranscriptionBackend(str, Enum):
     RUNPOD = "runpod"
     GPU_LOCAL = "gpu-local"
+    GROQ = "groq"
+    DEEPGRAM = "deepgram"
+
+
+class TranscriptEditJobStatus(str, Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    PROPOSED = "proposed"
+    COMPLETED = "completed"
+    APPLIED = "applied"
+    DISCARDED = "discarded"
+    FAILED = "failed"
 
 
 class MeetingType(str, Enum):
@@ -115,6 +128,8 @@ class Meeting(MeetingBase, table=True):
     status: str = Field(default="pending_upload") # pending_upload, queued, processing, completed, failed
     sub_status: Optional[str] = None
     transcript_text: Optional[str] = None
+    transcript_revision: int = Field(default=0)
+    derived_transcript_revision: int = Field(default=0)
     summary_text: Optional[str] = None
     original_summary_text: Optional[str] = None
     summary_edited: bool = Field(default=False)
@@ -141,6 +156,10 @@ class Meeting(MeetingBase, table=True):
     transliterated_text: Optional[str] = None
 
     segments: List["TranscriptSegment"] = Relationship(back_populates="meeting")
+    speaker_profiles: List["MeetingSpeaker"] = Relationship(
+        back_populates="meeting",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
     visual_segments: List["VisualSegment"] = Relationship(
         back_populates="meeting",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -164,6 +183,61 @@ class TranscriptSegment(SQLModel, table=True):
     text: str
     speaker: Optional[str] = None
     words: List[dict] = Field(default_factory=list, sa_column=Column(JSONB))
+    text_edited: bool = Field(default=False)
+    word_alignment_valid: bool = Field(default=True)
+
+class MeetingSpeaker(SQLModel, table=True):
+    __tablename__ = "meetingspeaker"
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "speaker_key", name="uq_meetingspeaker_meeting_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    meeting_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("meeting.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        )
+    )
+    speaker_key: str = Field(max_length=200)
+    display_name: str = Field(max_length=200)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    meeting: Optional[Meeting] = Relationship(back_populates="speaker_profiles")
+
+
+class TranscriptEditJob(SQLModel, table=True):
+    __tablename__ = "transcripteditjob"
+    __table_args__ = (
+        CheckConstraint("length(instruction) <= 4000", name="ck_transcripteditjob_instruction_length"),
+    )
+
+    id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        sa_column=Column(String(36), primary_key=True, nullable=False),
+    )
+    meeting_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("meeting.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        )
+    )
+    requested_by: int = Field(foreign_key="user.id", index=True)
+    instruction: str = Field(sa_column=Column(Text, nullable=False))
+    scope: dict = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    base_revision: int = Field(default=0)
+    status: str = Field(default="queued", index=True)
+    proposal: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
+    error: Optional[str] = Field(default=None, sa_column=Column(String(1000)))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc), index=True
+    )
+    applied_at: Optional[datetime] = None
+
 
 class VisualSegment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -218,10 +292,14 @@ class TranscriptWordRead(SQLModel):
     end: float
 
 class TranscriptSegmentRead(SQLModel):
+    id: int
     start: float
     end: float
     text: str
     speaker: Optional[str] = None
+    speaker_name: Optional[str] = None
+    text_edited: bool = False
+    word_alignment_valid: bool = True
     words: List[TranscriptWordRead] = []
 
 class SpeakerBreakdown(SQLModel):
@@ -235,6 +313,10 @@ class MeetingRead(MeetingBase):
     status: str
     sub_status: Optional[str] = None
     transcript_text: Optional[str] = None
+    transcript_revision: int = 0
+    derived_transcript_revision: int = 0
+    derived_transcript_stale: bool = False
+    transcript_derived_stale: bool = False
     summary_text: Optional[str] = None
     original_summary_text: Optional[str] = None
     summary_edited: bool = False

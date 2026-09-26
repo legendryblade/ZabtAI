@@ -54,6 +54,23 @@ def test_re_transcribe_updates_language_and_dispatches_job(client):
         _delete_meeting(meeting_id)
 
 
+def test_re_transcribe_rejects_overlapping_processing_job(client):
+    meeting_id = _make_meeting()
+    try:
+        with Session(engine) as s:
+            meeting = s.get(Meeting, meeting_id)
+            meeting.status = "processing"
+            s.add(meeting)
+            s.commit()
+        response = client.post(
+            f"/api/v1/meetings/{meeting_id}/re-transcribe",
+            json={"language": "english"},
+        )
+        assert response.status_code == 409
+    finally:
+        _delete_meeting(meeting_id)
+
+
 def test_re_transcribe_rejects_unknown_language(client):
     meeting_id = _make_meeting()
     try:
@@ -92,7 +109,8 @@ def test_re_transcribe_clears_transliterated_text_and_segments(client):
         m = Meeting(
             title="t", owner_id=1,
             requested_language="urdu_arabic", status="completed",
-            file_path="k", transliterated_text="yeh urdu hai",
+            file_path="k", transcript_text="old transcript",
+            transliterated_text="yeh urdu hai",
         )
         s.add(m)
         s.commit()
@@ -112,6 +130,7 @@ def test_re_transcribe_clears_transliterated_text_and_segments(client):
         assert resp.status_code == 200
         with Session(engine) as s:
             reloaded = s.get(Meeting, meeting_id)
+            assert reloaded.transcript_text is None
             assert reloaded.transliterated_text is None
             remaining = s.exec(
                 select(TranscriptSegment).where(

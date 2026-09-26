@@ -24,7 +24,7 @@ Please redact any secrets or personal meeting content.
 
 ## Environment
 - **Deployment topology:** single-machine / CPU-only / cloud (RunPod split)
-- **Transcription backend:** `gpu-local` / `runpod`
+- **Transcription backend:** `gpu-local` / `runpod` / `groq`
 - **GPU:** model + VRAM (or "CPU only")
 - **`WHISPER_MODEL`:** (e.g. large-v3, base)
 - **Storage provider:** minio / s3

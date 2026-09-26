@@ -65,6 +65,23 @@ class Settings(BaseSettings):
     RUNPOD_POLL_INTERVAL: int = 5
     RUNPOD_TIMEOUT: int = 300
 
+    # Groq speech-to-text (used when TRANSCRIPTION_BACKEND=groq)
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_TRANSCRIBE_MODEL: str = "whisper-large-v3"
+    GROQ_TIMEOUT: int = 600
+    # Free-tier upload limit is ~25 MB; larger files are re-encoded first.
+    GROQ_MAX_FILE_MB: int = 25
+
+    # Deepgram speech-to-text + diarization (used when TRANSCRIPTION_BACKEND=deepgram)
+    DEEPGRAM_API_KEY: str = ""
+    DEEPGRAM_BASE_URL: str = "https://api.deepgram.com"
+    DEEPGRAM_MODEL: str = "nova-3"
+    DEEPGRAM_DIARIZE: bool = True
+    DEEPGRAM_TIMEOUT: int = 600
+    # Deepgram accepts large uploads; compress only above this cap.
+    DEEPGRAM_MAX_FILE_MB: int = 512
+
     # Visual breakdown worker (zabt-vision-worker — see Plan 1/2 specs)
     VISION_BACKEND: str = "local"  # "local" | "runpod"
     VISION_LOCAL_URL: str = "http://zabt-vision-worker:8003"
@@ -104,11 +121,17 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = ""
+    TRANSCRIPT_EDIT_MAX_ACTIVE_JOBS: int = 3
 
     # Supabase Settings
     SUPABASE_URL: str = "https://your-project-ref.supabase.co"
     SUPABASE_JWT_SECRET: str = "change_me_in_env"
     SUPABASE_ANON_KEY: str = ""
+
+    # Single-user / no-login mode: skips Supabase JWT verification entirely and
+    # auto-provisions one local user. For local personal use only — do NOT enable
+    # on a multi-user or publicly reachable deployment.
+    SINGLE_USER_MODE: bool = False
 
     # Notifications
     NOTIFICATION_PROVIDER: str = ""  # "telegram" or "" (disabled)

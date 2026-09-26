@@ -15,8 +15,12 @@ def reset_singletons():
     import app.services.transcription.factory as factory_mod
 
     factory_mod._gpu_client = None
+    factory_mod._groq_client = None
+    factory_mod._deepgram_client = None
     yield
     factory_mod._gpu_client = None
+    factory_mod._groq_client = None
+    factory_mod._deepgram_client = None
 
 
 class TestBuildConfig:

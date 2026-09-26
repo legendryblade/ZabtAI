@@ -105,6 +105,8 @@ class MinioStorage:
                 self.s3_client.create_bucket(Bucket=self.bucket)
             except ClientError as e:
                 print(f"Warning: Could not create bucket {self.bucket}: {e}")
+        except Exception as e:
+            print(f"Warning: Could not verify bucket {self.bucket}: {e}")
 
     def generate_presigned_upload_url(
         self, user_id: int, filename: str, content_type: str, expiration: int = 3600
@@ -257,6 +259,8 @@ class S3Storage:
                 print(f"Warning: Bucket '{self.bucket}' does not exist on S3 endpoint.")
             else:
                 print(f"Warning: Could not verify bucket '{self.bucket}': {e}")
+        except Exception as e:
+            print(f"Warning: Could not verify bucket '{self.bucket}': {e}")
 
     def generate_presigned_upload_url(
         self, user_id: int, filename: str, content_type: str, expiration: int = 3600

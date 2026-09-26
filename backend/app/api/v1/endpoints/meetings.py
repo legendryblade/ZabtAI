@@ -38,22 +38,36 @@ def _build_meeting_response(meeting: Meeting) -> MeetingRead:
     segments = []
     speaker_durations: dict[str, float] = {}
     total_duration = 0.0
+    speaker_profiles = {
+        profile.speaker_key: profile.display_name
+        for profile in (meeting.speaker_profiles or [])
+    }
 
-    for seg in meeting.segments:
+    ordered_segments = sorted(
+        meeting.segments or [],
+        key=lambda seg: (seg.start_time, seg.id or 0),
+    )
+
+    for seg in ordered_segments:
         words = [
             TranscriptWordRead(word=w["word"], start=w["start"], end=w["end"])
             for w in (seg.words or [])
         ]
+        stable_speaker = seg.speaker or "SPEAKER_UNKNOWN"
+        speaker_name = speaker_profiles.get(stable_speaker, stable_speaker)
         segments.append(TranscriptSegmentRead(
+            id=seg.id,
             start=seg.start_time,
             end=seg.end_time,
             text=seg.text,
             speaker=seg.speaker,
+            speaker_name=speaker_name,
+            text_edited=seg.text_edited,
+            word_alignment_valid=seg.word_alignment_valid,
             words=words,
         ))
         dur = seg.end_time - seg.start_time
-        speaker = seg.speaker or "SPEAKER_UNKNOWN"
-        speaker_durations[speaker] = speaker_durations.get(speaker, 0.0) + dur
+        speaker_durations[stable_speaker] = speaker_durations.get(stable_speaker, 0.0) + dur
         total_duration += dur
 
     speakers = None
@@ -61,7 +75,7 @@ def _build_meeting_response(meeting: Meeting) -> MeetingRead:
         speakers = {
             spk: SpeakerBreakdown(
                 percentage=round((dur / total_duration) * 100, 1),
-                name=spk,
+                name=speaker_profiles.get(spk, spk),
             ).model_dump()
             for spk, dur in speaker_durations.items()
         }
@@ -86,6 +100,14 @@ def _build_meeting_response(meeting: Meeting) -> MeetingRead:
         status=meeting.status,
         sub_status=meeting.sub_status,
         transcript_text=meeting.transcript_text,
+        transcript_revision=meeting.transcript_revision,
+        derived_transcript_revision=meeting.derived_transcript_revision,
+        derived_transcript_stale=(
+            meeting.derived_transcript_revision != meeting.transcript_revision
+        ),
+        transcript_derived_stale=(
+            meeting.derived_transcript_revision != meeting.transcript_revision
+        ),
         summary_text=meeting.summary_text,
         original_summary_text=meeting.original_summary_text,
         summary_edited=meeting.summary_edited,
@@ -188,7 +210,26 @@ def read_meetings(
     Retrieve meetings (without segments — use GET /{meeting_id} for full detail).
     """
     rows = meeting_service.get_meetings(owner_id=current_user.id, skip=skip, limit=limit)
-    return [MeetingRead(**row._asdict()) for row in rows]
+    return [
+        MeetingRead(
+            **{
+                **row._asdict(),
+                "transcript_revision": getattr(row, "transcript_revision", 0),
+                "derived_transcript_revision": getattr(
+                    row, "derived_transcript_revision", 0
+                ),
+                "derived_transcript_stale": (
+                    getattr(row, "derived_transcript_revision", 0)
+                    != getattr(row, "transcript_revision", 0)
+                ),
+                "transcript_derived_stale": (
+                    getattr(row, "derived_transcript_revision", 0)
+                    != getattr(row, "transcript_revision", 0)
+                ),
+            }
+        )
+        for row in rows
+    ]
 
 @router.get("/{meeting_id}", response_model=MeetingRead)
 def read_meeting(
@@ -244,9 +285,16 @@ def export_meeting_pdf(
                 total_duration += dur
 
             speakers: dict[str, dict] = {}
+            profile_names = {
+                profile.speaker_key: profile.display_name
+                for profile in (meeting.speaker_profiles or [])
+            }
             if speaker_durations and total_duration > 0:
                 speakers = {
-                    spk: {"name": spk, "percentage": round((dur / total_duration) * 100, 1)}
+                    spk: {
+                        "name": profile_names.get(spk, spk),
+                        "percentage": round((dur / total_duration) * 100, 1),
+                    }
                     for spk, dur in speaker_durations.items()
                 }
 
@@ -463,7 +511,8 @@ def resummarize_meeting(
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
     """Trigger re-summarization of a meeting using a specified (or default) template."""
-    from app.worker import stage_summarize
+    from celery import chain
+    from app.worker import stage_extract_intelligence, stage_summarize
     meeting = meeting_service.get_meeting(meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -475,7 +524,10 @@ def resummarize_meeting(
             detail="Meeting is currently being processed. Try again when processing is complete.",
         )
     meeting_service.update_sub_status(meeting_id, "summarizing")
-    stage_summarize.apply_async(args=[meeting_id], kwargs={"template_id": body.template_id})
+    chain(
+        stage_summarize.si(meeting_id, template_id=body.template_id),
+        stage_extract_intelligence.si(meeting_id),
+    ).apply_async()
     return {
         "meeting_id": meeting_id,
         "status": "processing",
@@ -504,11 +556,17 @@ def re_transcribe_meeting(
         raise HTTPException(
             status_code=400, detail=f"Unknown language: {payload.language}"
         )
+    if meeting.status in {"queued", "processing"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Meeting is already being transcribed.",
+        )
 
     old_language = meeting.requested_language
     meeting.requested_language = payload.language
     meeting.status = "queued"
     meeting.sub_status = None
+    meeting.transcript_text = None
     meeting.transliterated_text = None
 
     # Delete old segments so the UI doesn't show stale transcript
@@ -760,6 +818,10 @@ def get_visual_segments(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     aligned = VisualSegmentService().get_with_transcript_alignment(meeting_id)
+    profile_names = {
+        profile.speaker_key: profile.display_name
+        for profile in (meeting.speaker_profiles or [])
+    }
     return VisualBreakdownResponse(
         meeting_id=meeting_id,
         visual_breakdown_status=meeting.visual_breakdown_status,
@@ -775,7 +837,10 @@ def get_visual_segments(
                 confidence=seg.confidence,
                 transcript_lines=[
                     _TranscriptLineOut(
-                        speaker=tl.speaker, text=tl.text, start=tl.start, end=tl.end,
+                        speaker=profile_names.get(tl.speaker, tl.speaker),
+                        text=tl.text,
+                        start=tl.start,
+                        end=tl.end,
                     )
                     for tl in seg.transcript_lines
                 ],

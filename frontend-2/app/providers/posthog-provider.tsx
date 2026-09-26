@@ -8,7 +8,10 @@ import { useEffect } from 'react'
 
 export function PHProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+    const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim()
+    if (!posthogKey) return
+
+    posthog.init(posthogKey, {
       api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
       capture_pageview: false, // Manual pageview tracking via PostHogPageView
       capture_pageleave: true,

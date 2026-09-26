@@ -2,7 +2,7 @@
 // Copyright (C) 2025-2026 Afeef Janjua
 "use client";
 
-import { useState, useEffect, useRef, use } from "react";
+import { useState, useEffect, useRef, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { getMeeting, updateMeetingSummary, restoreMeetingSummary, Meeting, updateMeetingType, reExtractIntelligence, listLanguages, type LanguageEntry } from "@/app/lib/api";
@@ -12,6 +12,7 @@ import { StatusBadge } from "@/app/components/status-badge";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { TranscriptViewer } from "@/app/components/transcript-viewer";
+import { TranscriptAiEditDialog } from "@/app/components/transcript-ai-edit-dialog";
 import { StickyMediaPlayer } from "@/app/components/sticky-media-player";
 import { PaywallModal } from "@/app/components/paywall-modal";
 import { getUserStage, STAGE_LABELS } from "@/app/lib/stage-utils";
@@ -28,7 +29,7 @@ import { StructuredOutputRenderer } from "@/app/components/structured-output-ren
 import { MeetingTypeSelector } from "@/app/components/meeting-type-selector";
 import { useTranscriptStore } from "@/app/lib/use-transcript-store";
 import { Separator } from "@/app/components/ui/separator";
-import { Pencil, Download, Mail, Copy, FileText, FileDown, ChevronDown, Eye, RotateCcw, RefreshCw, Loader2, Languages } from "lucide-react";
+import { Pencil, Download, Mail, Copy, FileText, FileDown, ChevronDown, Eye, RotateCcw, RefreshCw, Loader2, Languages, Sparkles } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,8 +51,8 @@ const romanSpeakerColor = (s: string) =>
   ROMAN_SPEAKER_COLORS[s] ?? "bg-stone-200 text-stone-500";
 const romanSpeakerLabel = (s: string) => {
   if (s === "SPEAKER_UNKNOWN") return "Unknown Speaker";
-  const n = s.split("_")[1];
-  return n !== undefined ? `Speaker ${parseInt(n) + 1}` : s;
+  const match = /^SPEAKER_(\d+)$/.exec(s);
+  return match ? `Speaker ${Number(match[1]) + 1}` : s;
 };
 
 type RomanRow = { speaker: string | null; text: string };
@@ -96,6 +97,7 @@ export default function MeetingDetailPage({
   const [showOriginal, setShowOriginal] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [reTranscribeOpen, setReTranscribeOpen] = useState(false);
+  const [transcriptEditOpen, setTranscriptEditOpen] = useState(false);
   const [langCatalog, setLangCatalog] = useState<LanguageEntry[]>([]);
   const [transcriptView, setTranscriptView] = useState<"original" | "roman">("original");
 
@@ -131,9 +133,45 @@ export default function MeetingDetailPage({
     code ? langCatalog.find((e) => e.code === code)?.display_name ?? code : null;
 
   const elapsedRef = useRef(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollGenerationRef = useRef(0);
+
+  const stopPolling = useCallback(() => {
+    pollGenerationRef.current += 1;
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    const generation = pollGenerationRef.current;
+    elapsedRef.current = 0;
+
+    const poll = async () => {
+      try {
+        const data = await getMeeting(Number(id));
+        if (generation !== pollGenerationRef.current) return;
+        setMeeting(data);
+        if (!ACTIVE_STATUSES.has(data.status)) {
+          stopPolling();
+          return;
+        }
+        elapsedRef.current += 3;
+        const delay = elapsedRef.current >= 30 ? 10000 : 3000;
+        pollTimeoutRef.current = setTimeout(() => void poll(), delay);
+      } catch {
+        if (generation !== pollGenerationRef.current) return;
+        pollTimeoutRef.current = setTimeout(() => void poll(), 10000);
+      }
+    };
+
+    pollTimeoutRef.current = setTimeout(() => void poll(), 3000);
+  }, [id, stopPolling]);
 
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
         // Here we would typically fetch the real meeting, but to fulfill T004 we can also 
@@ -152,48 +190,23 @@ export default function MeetingDetailPage({
           }
         }
 
+        if (cancelled) return;
         setMeeting(data);
         setLoading(false);
         if (ACTIVE_STATUSES.has(data.status)) startPolling();
       } catch {
+        if (cancelled) return;
         // Fallback for UI testing
         setError("Meeting not found or you don't have access to it.");
         setLoading(false);
       }
     };
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    return () => stopPolling();
-  }, [id]);
-
-  const startPolling = () => {
-    elapsedRef.current = 0;
-    intervalRef.current = setInterval(async () => {
-      elapsedRef.current += 3;
-      try {
-        const data = await getMeeting(Number(id));
-        setMeeting(data);
-        if (!ACTIVE_STATUSES.has(data.status)) stopPolling();
-        else if (elapsedRef.current >= 30 && intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = setInterval(async () => {
-            const refreshed = await getMeeting(Number(id));
-            setMeeting(refreshed);
-            if (!ACTIVE_STATUSES.has(refreshed.status)) stopPolling();
-          }, 10000);
-        }
-      } catch {
-        stopPolling();
-      }
-    }, 3000);
-  };
-
-  const stopPolling = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  };
+    void load();
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+  }, [id, startPolling, stopPolling]);
 
   // Warn before navigating away with unsaved edits
   useEffect(() => {
@@ -271,6 +284,24 @@ export default function MeetingDetailPage({
   }
 
   const isActive = ACTIVE_STATUSES.has(meeting.status);
+  const isDerivedTranscriptStale = Boolean(
+    meeting.derived_transcript_stale ||
+    meeting.transcript_derived_stale ||
+    (typeof meeting.transcript_revision === "number" &&
+      typeof meeting.derived_transcript_revision === "number" &&
+      meeting.transcript_revision !== meeting.derived_transcript_revision)
+  );
+  const refreshAfterTranscriptEdit = async () => {
+    stopPolling();
+    const refreshed = await getMeeting(meeting.id);
+    setMeeting(refreshed);
+    setTranscriptView("original");
+  };
+  const speakerNames = Object.entries(meeting.speakers ?? {})
+    .map(([key, speaker]) =>
+      speaker.name && speaker.name !== key ? speaker.name : romanSpeakerLabel(key)
+    )
+    .join(", ");
   const formattedDate = new Date(meeting.created_at).toLocaleString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric'
   });
@@ -293,10 +324,10 @@ export default function MeetingDetailPage({
               <StatusBadge status={meeting.status} subStatus={meeting.sub_status} />
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {meeting.speakers && Object.keys(meeting.speakers).length > 0 && (
+              {speakerNames && (
                 <>
                   <span className="text-foreground/70 font-medium">
-                    {Object.values(meeting.speakers).map((s) => s.name).join(", ")}
+                    {speakerNames}
                   </span>
                   <span className="text-border">·</span>
                 </>
@@ -556,8 +587,8 @@ export default function MeetingDetailPage({
               <div className="bg-white rounded-lg border border-stone-200 p-6">
                 <StructuredOutputRenderer
                   data={meeting.structured_output || null}
-                  status={(meeting.structured_output_status as any) || "pending"}
-                  layoutHint={(meeting.layout_hint as any) || "list"}
+                  status={meeting.structured_output_status || "pending"}
+                  layoutHint={meeting.layout_hint || "list"}
                   meetingType={(meeting.meeting_type as MeetingType) || "generic"}
                   onRetry={handleRetryExtraction}
                 />
@@ -577,6 +608,10 @@ export default function MeetingDetailPage({
                   }}>
                     <FileDown className="size-3.5" />
                     Download PDF
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setTranscriptEditOpen(true)}>
+                    <Sparkles className="size-3.5" />
+                    AI edit
                   </Button>
                   <div className="flex-1" />
                   {/* Roman script toggle — only shown when transliteration is available */}
@@ -614,6 +649,12 @@ export default function MeetingDetailPage({
                   </Button>
                 </div>
               )}
+              {isDerivedTranscriptStale && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
+                  <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+                  Transcript changed since the last derived-data update. Summaries and insights may be out of date.
+                </div>
+              )}
               {meeting.segments ? (
                 <div className="bg-white rounded-lg border border-stone-200 p-6 pb-20">
                   {transcriptView === "roman" && meeting.transliterated_text ? (
@@ -634,7 +675,11 @@ export default function MeetingDetailPage({
                             <div className="divide-y divide-stone-100">
                               {rows.map((row, i) => {
                                 const speaker = row.speaker ?? "SPEAKER_UNKNOWN";
-                                const label = romanSpeakerLabel(speaker);
+                                const namedSpeaker = meeting.speakers?.[speaker]?.name;
+                                const label =
+                                  namedSpeaker && namedSpeaker !== speaker
+                                    ? namedSpeaker
+                                    : romanSpeakerLabel(speaker);
                                 const isUnknown = speaker === "SPEAKER_UNKNOWN";
                                 return (
                                   <div
@@ -651,7 +696,7 @@ export default function MeetingDetailPage({
                                             <circle cx="12" cy="7" r="4" />
                                           </svg>
                                         ) : (
-                                          label.charAt(label.indexOf(" ") + 1)
+                                          label.trim().charAt(0).toUpperCase()
                                         )}
                                       </div>
                                     </div>
@@ -700,6 +745,15 @@ export default function MeetingDetailPage({
           <StickyMediaPlayer meeting={meeting} />
         )}
       </div>
+
+      <TranscriptAiEditDialog
+        key={meeting.id}
+        meetingId={meeting.id}
+        segments={meeting.segments ?? []}
+        open={transcriptEditOpen}
+        onOpenChange={setTranscriptEditOpen}
+        onApplied={refreshAfterTranscriptEdit}
+      />
 
       {/* Share via Email Dialog */}
       <ShareEmailDialog

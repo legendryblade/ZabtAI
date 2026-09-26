@@ -2,11 +2,12 @@
 // Copyright (C) 2025-2026 Afeef Janjua
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { register, socialLogin, type OAuthProvider } from "@/app/lib/api";
+import { isSingleUserMode } from "@/app/lib/auth-mode";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { SocialButton } from "@/app/components/ui/social-button";
@@ -19,6 +20,17 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Single-user mode: no signup — go straight to the app.
+  useEffect(() => {
+    if (isSingleUserMode) {
+      router.replace("/");
+    }
+  }, [router]);
+
+  if (isSingleUserMode) {
+    return null;
+  }
 
   const handleSocialSignUp = async (provider: OAuthProvider) => {
     await socialLogin(provider);

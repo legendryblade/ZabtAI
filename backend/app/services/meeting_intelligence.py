@@ -12,10 +12,17 @@ from app.models.meeting_intelligence import MeetingHighlight
 
 logger = get_logger(__name__)
 
-_client = OpenAI(
-    base_url=settings.OPENAI_BASE_URL,
-    api_key=settings.OPENAI_API_KEY,
-)
+_client = None
+
+
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(
+            base_url=settings.OPENAI_BASE_URL or None,
+            api_key=settings.OPENAI_API_KEY,
+        )
+    return _client
 
 
 # ── Pydantic models for structured output (enforced by OpenAI beta.parse) ────
@@ -197,7 +204,7 @@ class MeetingIntelligenceService:
 
     def extract_highlights(self, transcript_text: str) -> dict:
         """Call 1: Extract action items, key questions, and chapters from transcript."""
-        response = _client.beta.chat.completions.parse(
+        response = _get_client().beta.chat.completions.parse(
             model=settings.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": HIGHLIGHT_EXTRACTION_PROMPT},
@@ -217,7 +224,7 @@ class MeetingIntelligenceService:
         type_config = MEETING_TYPE_PROMPTS.get(meeting_type, MEETING_TYPE_PROMPTS["generic"])
         pydantic_model = type_config["model"]
 
-        response = _client.beta.chat.completions.parse(
+        response = _get_client().beta.chat.completions.parse(
             model=settings.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": type_config["prompt"]},
